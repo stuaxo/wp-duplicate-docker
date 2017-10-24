@@ -1,0 +1,36 @@
+version: '2'
+services:
+  duplicate:
+    build: duplicate
+    depends_on:
+      - db
+    volumes:
+      - ./wp-archive:/wp-archive
+      - ./wp-app:/var/www/html
+    environment:
+      WORDPRESS_URL: http://localhost
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: root
+      WORDPRESS_DB_PASSWORD: password
+    networks:
+      - wordpress-network
+    
+    ports:
+      - 127.0.0.1:80:80 # change ip if required
+  
+  db:
+    image: mysql:latest # https://hub.docker.com/_/mysql/ - or mariadb https://hub.docker.com/_/mariadb
+    ports:
+      - 127.0.0.1:3306:3306 # change ip if required
+    volumes:
+      - ./wp-data:/docker-entrypoint-initdb.d
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_ROOT_PASSWORD: password
+    networks:
+      - wordpress-network
+networks:
+  wordpress-network:
+      driver: bridge
+
