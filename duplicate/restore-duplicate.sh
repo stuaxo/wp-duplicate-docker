@@ -69,8 +69,6 @@ UPDATE wp_postmeta
 SET    meta_value = Replace(meta_value, @oldurl, @url);
 "
 
-echo "\n\n\n"${MYSQL} -D${WORDPRESS_DB_NAME} -e "${SQL}" "\n\n\n"
-
 ${MYSQL} -D${WORDPRESS_DB_NAME} -e "${SQL}"
 
 }
@@ -95,12 +93,18 @@ function db_create()
     ${MYSQL} -e "CREATE DATABASE ${WORDPRESS_DB_NAME};" 2> /dev/null || /bin/true
 }
 
+function db_drop()
+{
+    # don't die here if the db is already created, there is a later
+    # check to make sure it is empty.
+    ${MYSQL} -e "DROP DATABASE ${WORDPRESS_DB_NAME};" 2> /dev/null || /bin/true
+}
 
 function files_restore()
 {
     archive=$1
     destdir=$2
-    unzip -q ${archive} -x database.sql -d ${destdir}
+    unzip ${archive} -x database.sql -d ${destdir}
 }
 
 function wp_configure()
@@ -142,7 +146,7 @@ function restore_duplicate()
     rmdir ${tmpdir}
 
     dir_empty ${destdir}
-    if [ $? -eq 0 ]; then
+    if [ "$3" = "--overwrite" ] || [ $? -eq 0 ]; then
         echo "Restore files..." 1>&2
         files_restore ${archive} ${destdir}
         echo "wp_configure ..." 1>&2
@@ -188,7 +192,7 @@ function main()
     fi
 
     archive=$1
-    destdir=$2
+    destdir=$2    
 
     archive_is_duplicate ${archive}
     if [ $? -eq 1 ]; then
@@ -196,15 +200,19 @@ function main()
         exit 1
     fi
 
+    if [ "$3" = "--overwrite" ]; then
+        rm -rf ${destdir}/* ${destdir}/.??*
+    fi
     db_create
 
     db_is_populated
-    if [ $? -eq 1 ]; then
+    if [ "$3" = "--overwrite" ] && [ $? -eq 0 ]; then
+        restore_duplicate ${archive} ${destdir} $3
+        exit $?
+
+    else
         echo "Database already has tables, not restoring" 1>&2
         exit 2
-    else
-        restore_duplicate ${archive} ${destdir}
-        exit $?
     fi
 }
 

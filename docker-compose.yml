@@ -24,6 +24,7 @@ services:
     ports:
       - 127.0.0.1:3306:3306 # change ip if required
     volumes:
+      - ./wp-mysql:/var/lib/mysql
       - ./wp-data:/docker-entrypoint-initdb.d
     environment:
       MYSQL_DATABASE: wordpress

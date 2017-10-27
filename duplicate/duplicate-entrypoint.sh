@@ -9,16 +9,14 @@ function safe_restore()
     shopt -s nullglob
     shopt -s dotglob
     files=("${DESTDIR}/"*)
-    file_count=${#files[@]}
-
-    if [ ${file_count} -eq 0 ]; then
+    if [ "$1" = "--overwrite" ] || [ ${#files[@]} -eq 0 ]; then
         # check duplicator archive
         archives=( "/wp-archive/*.zip" )
         archive_count=${#archives[@]}
 
         if [ ${archive_count} -eq 1 ]; then
             archive=${archives[0]}
-            restore-duplicate.sh ${archive} ${DESTDIR} || /bin/true
+            restore-duplicate.sh ${archive} ${DESTDIR} $1 || /bin/true
         elif [ ${archive_count} -gt 3 ]; then
             echo "Found more than one archive, not importing."
         elif [ ${archive_count} -eq 0 ]; then
@@ -27,9 +25,12 @@ function safe_restore()
     fi
 }
 
-sleep 3
 wait-for-it.sh ${WORDPRESS_DB_HOST}:3306
 
-safe_restore
-eval $*
+if [ -z "$1" ] || [ "$1" = "--overwrite" ]; then
+    safe_restore $@
+    apache2-foreground
+else
+    exec "$@"
+fi
 
