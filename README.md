@@ -44,6 +44,40 @@ $docker-compose up
 
 Your wordpress site will now be available at ```http://localhost``` or the URL you chose.
 
+# Configuration
+The following environment variables can be set by modifying the `docker-compose.yml` file:
+
+Wordpress
+```
+# Set the URL that wordpress runs on:
+WORDPRESS_URL: 'http://localhost'
+# Database credentials:
+WORDPRESS_DB_HOST: db
+WORDPRESS_DB_NAME: wordpress
+WORDPRESS_DB_USER: root
+WORDPRESS_DB_PASSWORD: password
+```
+
+MySQL
+```
+MYSQL_DATABASE: wordpress
+MYSQL_ROOT_PASSWORD: password
+```
+
+# Security
+This setup is made for local development, so is not setup to be secure.
+
+# Scripts
+In the `duplicator/` folder:
+
+## `duplicate-entrypoint.sh`
+- Checks there is only one duplicator archive in wp-archive then calls `restore-duplicate`
+- Runs Apache to serve the Wordpress site.
+
+## `restore-duplicate.sh`
+- Extracts the duplicator archive in `wp-archive`.
+- Restores the database backup.
+- Configures Wordpress with settings to run in docker.  
 
 ## Issues
 By design: changes to the duplicate site are currently not saved, this is fine for my purposes but my not be for you.
