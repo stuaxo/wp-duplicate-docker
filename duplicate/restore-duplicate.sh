@@ -1,12 +1,16 @@
 #!/bin/bash
-
-# Stuart Axon 2017 - Use as you will.
+#
+# Bring up wordpress on apache and mysql from a backup made with wordpress-duplicator.
+#
+# This is to enable a local copy of your wordpress blog on docker, as a backup.
+#
+# MIT License - Stuart Axon 2017-2019.
 #
 # return codes
 # 1 - issue with archive
 # 2 - issue with database
 # 3 - issue with destination directory
-
+#
 set -e
 
 shopt -s nullglob
@@ -20,8 +24,9 @@ export MYSQL_PWD=${WORDPRESS_DB_PASSWORD}
 export MYSQL="mysql -h${WORDPRESS_DB_HOST} -u${WORDPRESS_DB_USER}"
 
 
-function dir_empty()
+function is_directory_empty()
 {
+    # set errorlevel to 1 if directory specified in $1 is not empty.
     destdir=$1
     files=("${destdir}/"*)
     file_count=${#files[@]}
@@ -32,7 +37,8 @@ function dir_empty()
     fi
 }
 
-function db_is_populated() {
+function is_wordpress_db_populated() {
+    # set errorlevel to 1 if database contains a wordpress db
     table_count=$(${MYSQL} --batch --raw -N -e "select count(*) from information_schema.tables where table_schema='wordpress';")
     if [ ${table_count} -gt 0 ]; then
         return 1
@@ -41,14 +47,16 @@ function db_is_populated() {
     fi
 }
 
-function db_restore()
+function restore_wordpress_db()
 {
     SQL=$1
     eval "${MYSQL} --batch --raw -N -D${WORDPRESS_DB_NAME} < $1"
 }
 
-function db_update_urls()
+function update_site_urls()
 {
+    # Update site URL to the one passed in $1 so the site
+    # can be served from a whichever URL is needed from the local docker container.
 SQL="
 SET @url:='$1';
 SET @oldurl:= (SELECT option_value FROM wp_options WHERE option_name = 'siteurl');
@@ -68,16 +76,14 @@ SET    post_content = Replace(post_content, @oldurl, @url);
 UPDATE wp_postmeta
 SET    meta_value = Replace(meta_value, @oldurl, @url);
 "
-
-${MYSQL} -D${WORDPRESS_DB_NAME} -e "${SQL}"
-
+    ${MYSQL} -D${WORDPRESS_DB_NAME} -e "${SQL}"
 }
 
 
-function archive_is_duplicate()
+function file_is_wordpress_duplicator_archive()
 {
+    # Set errorlevel if $1 is not a zipfile containing database.sql and wp-config.php
     archive=$1
-    # check it's a duplicator archive, with: database.sql wp-config.php
     unzip -l ${archive} database.sql wp-config.php | grep -o '2 files' > /dev/null
     if [ "$?" -ne 0 ]; then
         return 1
@@ -86,29 +92,34 @@ function archive_is_duplicate()
     fi
 }
 
-function db_create()
+function create_wordpress_database()
 {
-    # don't die here if the db is already created, there is a later
-    # check to make sure it is empty.
+    # Create the wordpress database, this does not check for errors,
+    # as there is another check that verifies the database is empty.
     ${MYSQL} -e "CREATE DATABASE ${WORDPRESS_DB_NAME};" 2> /dev/null || /bin/true
 }
 
-function db_drop()
+function drop_wordpress_db()
 {
-    # don't die here if the db is already created, there is a later
-    # check to make sure it is empty.
+    # Drop the wordpress database, this does not check for errors,
+    # as there is another check that verifies the database is empty.
     ${MYSQL} -e "DROP DATABASE ${WORDPRESS_DB_NAME};" 2> /dev/null || /bin/true
 }
 
-function files_restore()
+function restore_files()
 {
+    # Restore the database backup from the duplicator archive.
     archive=$1
     destdir=$2
     unzip ${archive} -x database.sql -d ${destdir}
 }
 
-function wp_configure()
+function configure_wordpress()
 {
+    # Create a wp-config.php file from the file passed in to $1
+    # Database settings are modified to use the environment
+    # variables:
+    #   WORDPRESS_DB_HOST, WORDPRESS_DB_NAME, WORDPRESS_DB_USER, WORDPRESS_DB_PASSWORD
     wp_conf=$1
     cp wp-config.php wp-config.php.bak
     sed -i "/DB_HOST/s/'[^']*'/'${WORDPRESS_DB_HOST}'/2" ${wp_conf}
@@ -117,8 +128,10 @@ function wp_configure()
     sed -i "/DB_PASSWORD/s/'[^']*'/'${WORDPRESS_DB_PASSWORD}'/2" ${wp_conf}
 }
 
-function apache_configure()
+function configure_apache()
 {
+    # Setup apache to respond to the URL specified in the
+    # WORDPRESS_URL environment variable and add the rewrite module.
     apache_conf=$1
     if [ -n ${WORDPRESS_URL} ]; then
         echo ServerName ${WORDPRESS_URL} >> ${apache_conf}
@@ -134,10 +147,10 @@ function restore_duplicate()
     mkdir -p ${tmpdir}
     unzip -q ${archive} database.sql -d ${tmpdir}
 
-    db_restore ${tmpdir}/database.sql
+    restore_wordpress_db ${tmpdir}/database.sql
     if [ -n ${WORDPRESS_URL} ]; then
         echo "Update urls to ${WORDPRESS_URL}" 1>&2
-        db_update_urls ${WORDPRESS_URL}
+        update_site_urls ${WORDPRESS_URL}
     else
         echo Not updating urls
     fi
@@ -145,14 +158,14 @@ function restore_duplicate()
     rm ${tmpdir}/database.sql
     rmdir ${tmpdir}
 
-    dir_empty ${destdir}
+    is_directory_empty ${destdir}
     if [ "$3" = "--overwrite" ] || [ $? -eq 0 ]; then
         echo "Restore files..." 1>&2
-        files_restore ${archive} ${destdir}
-        echo "wp_configure ..." 1>&2
-        wp_configure ${destdir}/wp-config.php
-        echo "apache_configure ..." 1>&2
-        apache_configure '/etc/apache2/apache2.conf'
+        restore_files ${archive} ${destdir}
+        echo "configure_wordpress ..." 1>&2
+        configure_wordpress ${destdir}/wp-config.php
+        echo "configure_apache ..." 1>&2
+        configure_apache '/etc/apache2/apache2.conf'
     else
         echo "Destination directory already populated, not restoring" 1>&2
         return 3
@@ -192,9 +205,9 @@ function main()
     fi
 
     archive=$1
-    destdir=$2    
+    destdir=$2
 
-    archive_is_duplicate ${archive}
+    file_is_wordpress_duplicator_archive ${archive}
     if [ $? -eq 1 ]; then
         echo "${archive} was not created by wordpress-duplicator" 1>&2
         exit 1
@@ -203,9 +216,9 @@ function main()
     if [ "$3" = "--overwrite" ]; then
         rm -rf ${destdir}/* ${destdir}/.??*
     fi
-    db_create
+    create_wordpress_database
 
-    db_is_populated
+    is_wordpress_db_populated
     if [ "$3" = "--overwrite" ] && [ $? -eq 0 ]; then
         restore_duplicate ${archive} ${destdir} $3
         exit $?
