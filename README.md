@@ -1,80 +1,89 @@
 # docker-compose-wp-duplicate
 Run a Wordpress-Duplicator backup using Docker Compose.
 
-Restore a zip file and installer.php created by wordpress duplicator
-to an immutabke docker container running locally.
+# Use case
 
+I use this to run a copy of my old wordpress blog in case I want to make tweaks and re-import the data into my new non-wordpress site.
+
+
+## Features
+
+ - Sets up Wordpress, Apache and Mysql on build
+ - Modifies site urls to localhost or custom URL so links work locally.
+
+## Usage
+
+On wordpress install the duplicator plugin from https://wordpress.org/plugins/duplicator/
+
+There is a video at the link above with more information on using duplicator itself.
+
+[Install Docker Compose](https://docs.docker.com/compose/install/)
+
+Clone this repository
+
+```sh
+$ git clone https://github.com/stuaxo/wp-duplicate-docker.git
 ```
-ls wp-archive
-20171025_devstu_ed680e55e011c2356456171025215736_archive.zip  installer.php
-```
 
-```
-docker-compose up
-```
+Copy the duplicator archive and `installer.php` to the `wp-archive` folder.
 
-This was used to help migrate my own wordpress, use at
-your own risk, patches welcome.
+Set the correct database version:
+- In the ```db``` section, change the database to the version your wordpress instance needs.
+- The default site url is http://localhost if you need to change this edit ```WORDPRESS_URL```.
 
-
-## Prerequisites
-
-### Locally
-
-- Install docker-compose
-
-- Clone this repo.
-
-
-### On your wordpress site:
-
-Install the duplicator plugin from https://wordpress.org/plugins/duplicator/
-The link has a useful video about using duplicator.
-
-
-# Usage
-
-Copy the duplicator archive into the folder wp-app.
-
-Note, you can only have *ONE* archive in this directory at a time,
-the script will not continue if there are more.
-
-Run your blog in docker  
+Run your blog in docker:
 
 ```sh
 docker-compose up --build
 ```
 
-Subsequent runs don't need the --build
-```
-docker-compose up
-```
-
-Your wordpress site will now be available at ```http://localhost```
-
-
-## Persistance
-
-wp-app and wp-mysql hold the wordpress site and mysql database respectively.
-
-
-## Overwriting with a new archive
-
-If you make changes on your original site you move the old archive
-out of the wp-archive folder, then backup with duplicator again.
-
-Once the zip file and installer.php are in wp-archive, you can update
-the database in the container, with the --overwrite commandline.
-
-```
-docker-compose run duplicate --overwrite
+Subsequent runs don't need previous `--build` step:
+```sh
+$docker-compose up
 ```
 
+Your wordpress site will now be available at ```http://localhost``` or the URL you chose.
 
-# Issues
+# Configuration
+The following environment variables can be set by modifying the `docker-compose.yml` file:
 
-Currently the volumes wp-app etc are all owned by root which isn't ideal.
+Wordpress
+```
+# Set the URL that wordpress runs on:
+WORDPRESS_URL: 'http://localhost'
+# Database credentials:
+WORDPRESS_DB_HOST: db
+WORDPRESS_DB_NAME: wordpress
+WORDPRESS_DB_USER: root
+WORDPRESS_DB_PASSWORD: password
+```
 
+MySQL
+```
+MYSQL_DATABASE: wordpress
+MYSQL_ROOT_PASSWORD: password
+```
+
+# Security
+This setup is made for local development, so is not setup to be secure.
+
+# Scripts
+In the `duplicator/` folder:
+
+## `duplicate-entrypoint.sh`
+- Checks there is only one duplicator archive in wp-archive then calls `restore-duplicate`
+- Runs Apache to serve the Wordpress site.
+
+## `restore-duplicate.sh`
+- Extracts the duplicator archive in `wp-archive`.
+- Restores the database backup.
+- Configures Wordpress with settings to run in docker.  
+
+## Issues
+By design: changes to the duplicate site are currently not saved, this is fine for my purposes but my not be for you.
+
+## TODO
+Provide a getting-started script that can check the database version.
 
 # Thanks
 
