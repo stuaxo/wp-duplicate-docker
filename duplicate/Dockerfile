@@ -5,7 +5,7 @@ EXPOSE 80
 VOLUME /var/html/www
 
 RUN apt-get update -y && apt-get install -y \
-    mysql-client \
+    mariadb-client \
     unzip
 
 COPY ./duplicate-entrypoint.sh /usr/local/bin/duplicate-entrypoint.sh
