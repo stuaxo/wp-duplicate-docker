@@ -11,7 +11,7 @@ function safe_restore()
     files=("${DESTDIR}/"*)
     if [ "$1" = "--overwrite" ] || [ ${#files[@]} -eq 0 ]; then
         # check duplicator archive
-        archives=( "/wp-archive/*.zip" )
+        archives=( /wp-archive/*.zip )
         archive_count=${#archives[@]}
 
         if [ ${archive_count} -eq 1 ]; then
@@ -27,10 +27,7 @@ function safe_restore()
 
 wait-for-it.sh ${WORDPRESS_DB_HOST}:3306
 
-if [ -z "$1" ] || [ "$1" = "--overwrite" ]; then
-    safe_restore $@
-    apache2-foreground
-else
-    exec "$@"
-fi
+safe_restore $@
+
+exec "$@"
 

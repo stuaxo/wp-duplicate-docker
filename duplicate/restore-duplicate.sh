@@ -16,6 +16,10 @@ WORDPRESS_DB_HOST=${WORDPRESS_DB_HOST:-localhost}
 WORDPRESS_DB_USER=${WORDPRESS_DB_USER:-wordpress}
 WORDPRESS_DB_PASSWORD=${WORDPRESS_DB_PASSWORD:-password}
 
+# Overwrite the existing site from the duplicator archive by setting WPD_OVERWRITE_SITE to 1 or a truthy value
+[[ "${WPD_OVERWRITE_SITE,,}" =~ ^(1|y|yes|true)$ ]] && WPD_OVERWRITE_SITE=1 || WPD_OVERWRITE_SITE=0
+[[ " $* " =~ " --overwrite " ]] && WPD_OVERWRITE_SITE=1
+
 export MYSQL_PWD=${WORDPRESS_DB_PASSWORD}
 export MYSQL="mysql -h${WORDPRESS_DB_HOST} -u${WORDPRESS_DB_USER}"
 
@@ -110,7 +114,7 @@ function files_restore()
 function wp_configure()
 {
     wp_conf=$1
-    cp wp-config.php wp-config.php.bak
+    cp ${wp_conf} ${wp_conf}.bak
     sed -i "/DB_HOST/s/'[^']*'/'${WORDPRESS_DB_HOST}'/2" ${wp_conf}
     sed -i "/DB_NAME/s/'[^']*'/'${WORDPRESS_DB_NAME}'/2" ${wp_conf}
     sed -i "/DB_USER/s/'[^']*'/'${WORDPRESS_DB_USER}'/2" ${wp_conf}
@@ -129,15 +133,17 @@ function apache_configure()
 function restore_duplicate()
 {
     archive=$1
+    destdir=$2
+
     echo "Restore database"
     tmpdir=$(mktemp -d /tmp/duperestore.XXXXXXXXX)
     mkdir -p ${tmpdir}
     unzip -q ${archive} database.sql -d ${tmpdir}
 
     db_restore ${tmpdir}/database.sql
-    if [ -n ${WORDPRESS_URL} ]; then
+    if [ -n "${WORDPRESS_URL}" ]; then
         echo "Update urls to ${WORDPRESS_URL}" 1>&2
-        db_update_urls ${WORDPRESS_URL}
+        db_update_urls "${WORDPRESS_URL}"
     else
         echo Not updating urls
     fi
@@ -146,12 +152,13 @@ function restore_duplicate()
     rmdir ${tmpdir}
 
     dir_empty ${destdir}
-    if [ "$3" = "--overwrite" ] || [ $? -eq 0 ]; then
-        echo "Restore files..." 1>&2
+    IS_DIR_EMPTY=$?
+    if [ "$WPD_OVERWRITE_SITE" -eq 1 ] || [ $IS_DIR_EMPTY -eq 0 ]; then
+        echo "Restore files from archive" 1>&2
         files_restore ${archive} ${destdir}
-        echo "wp_configure ..." 1>&2
+        echo "Set database credentials and host" 1>&2
         wp_configure ${destdir}/wp-config.php
-        echo "apache_configure ..." 1>&2
+        echo "Configure Apache" 1>&2
         apache_configure '/etc/apache2/apache2.conf'
     else
         echo "Destination directory already populated, not restoring" 1>&2
@@ -194,20 +201,20 @@ function main()
     archive=$1
     destdir=$2    
 
-    archive_is_duplicate ${archive}
-    if [ $? -eq 1 ]; then
+    if ! archive_is_duplicate ${archive}; then
         echo "${archive} was not created by wordpress-duplicator" 1>&2
         exit 1
     fi
 
-    if [ "$3" = "--overwrite" ]; then
+    if [ "$WPD_OVERWRITE_SITE" -eq 1 ]; then
         rm -rf ${destdir}/* ${destdir}/.??*
     fi
     db_create
 
     db_is_populated
-    if [ "$3" = "--overwrite" ] && [ $? -eq 0 ]; then
-        restore_duplicate ${archive} ${destdir} $3
+    DB_IS_POPULATED=$?
+    if [ "$WPD_OVERWRITE_SITE" -eq 1 ] || [ $DB_IS_POPULATED -eq 0 ]; then
+        restore_duplicate ${archive} ${destdir}
         exit $?
 
     else
