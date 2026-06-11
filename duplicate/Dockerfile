@@ -1,4 +1,5 @@
-FROM wordpress
+# Important!   Set this to the correct version for your blog
+FROM wordpress:php7.4-apache
 
 EXPOSE 80
 
